@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,26 +12,28 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { NavigationFormData } from "@/types/navigation";
-
-const formSchema = z.object({
-  label: z.string().min(1, "Nazwa jest wymagana"),
-  url: z.string().url().optional().or(z.literal("")),
-});
+import {
+  UpdateFormData,
+  InsertFormData,
+  updateSchema,
+  insertSchema,
+} from "@/types/navigation";
 
 interface NavigationFormProps {
-  onSubmit: (data: NavigationFormData) => void;
+  onSubmit: (data: UpdateFormData | InsertFormData) => void;
   onCancel: () => void;
-  initialData?: NavigationFormData;
+  initialData?: UpdateFormData;
+  mode: "update" | "insert";
 }
 
 export function NavigationForm({
   onSubmit,
   onCancel,
   initialData,
+  mode,
 }: NavigationFormProps) {
-  const form = useForm<NavigationFormData>({
-    resolver: zodResolver(formSchema),
+  const form = useForm({
+    resolver: zodResolver(mode === "update" ? updateSchema : insertSchema),
     defaultValues: initialData || {
       label: "",
       url: "",
@@ -42,7 +42,7 @@ export function NavigationForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 p-4">
         <FormField
           control={form.control}
           name="label"
@@ -73,7 +73,9 @@ export function NavigationForm({
           <Button type="button" variant="outline" onClick={onCancel}>
             Anuluj
           </Button>
-          <Button type="submit">Dodaj</Button>
+          <Button type="submit">
+            {mode === "update" ? "Zapisz" : "Dodaj"}
+          </Button>
         </div>
       </form>
     </Form>

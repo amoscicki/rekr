@@ -7,10 +7,14 @@ import {
   closestCenter,
   DragOverlay,
   useDroppable,
+  useSensor,
+  PointerSensor,
+  useSensors,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
+  arrayMove,
 } from "@dnd-kit/sortable";
 import { Button } from "@/components/ui/button";
 import { NavigationForm } from "@/components/navigation-form";
@@ -20,6 +24,7 @@ import {
   NavigationFormData,
   NavigationItem as NavigationItemType,
 } from "@/types/navigation";
+import { cn } from "@/lib/utils";
 
 const findItemAndParent = (
   items: NavigationItemType[],
@@ -51,13 +56,19 @@ function RootDropZone() {
   return (
     <div
       ref={setNodeRef}
-      className="h-2 rounded-lg opacity-0 hover:opacity-100 transition-opacity"
-      data-drop-zone="root"
+      className={cn(
+        "h-12 rounded-lg transition-all border-2 border-dashed",
+        isOver ? "opacity-100" : "opacity-0 hover:opacity-50"
+      )}
       style={{
         background: isOver ? "rgba(127, 86, 217, 0.1)" : "transparent",
-        border: isOver ? "2px dashed var(--primary)" : "none",
+        borderColor: "rgb(127, 86, 217)",
       }}
-    />
+    >
+      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+        Upuść tutaj aby dodać na początku listy
+      </div>
+    </div>
   );
 }
 
@@ -72,12 +83,19 @@ function EndDropZone() {
   return (
     <div
       ref={setNodeRef}
-      className="h-8 border-2 border-dashed border-primary/20 rounded-lg opacity-0 hover:opacity-100 transition-opacity mt-2"
-      data-drop-zone="root-end"
+      className={cn(
+        "h-12 rounded-lg transition-all mt-2 border-2 border-dashed",
+        isOver ? "opacity-100" : "opacity-0 hover:opacity-50"
+      )}
       style={{
         background: isOver ? "rgba(127, 86, 217, 0.1)" : "transparent",
+        borderColor: "rgb(127, 86, 217)",
       }}
-    />
+    >
+      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+        Upuść tutaj aby dodać na końcu listy
+      </div>
+    </div>
   );
 }
 
@@ -170,6 +188,17 @@ const addToParentAtIndex = (
   });
 };
 
+const findItemIndex = (items: NavigationItemType[], id: string): number => {
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].id === id) return i;
+    if (items[i].children?.length) {
+      const index = findItemIndex(items[i].children, id);
+      if (index !== -1) return index;
+    }
+  }
+  return -1;
+};
+
 export default function NavigationManager() {
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -177,6 +206,15 @@ export default function NavigationManager() {
   const { items, addItem, updateItem, removeItem, reorderItems } =
     useNavigation();
   const [mounted, setMounted] = useState(false);
+  const [isDraggingAny, setIsDraggingAny] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Minimalna odległość przed rozpoczęciem przeciągania
+      },
+    })
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -184,57 +222,84 @@ export default function NavigationManager() {
 
   if (!mounted) return null;
 
+  const handleDragStart = () => {
+    setIsDraggingAny(true);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setIsDraggingAny(false);
     const { active, over } = event;
+
     if (!over) return;
 
-    const [draggedItem, draggedParent] = findItemAndParent(
-      items,
-      active.id as string
-    );
+    const activeId = active.id as string;
+    const overId = over.id as string;
+    const overData = over.data.current as {
+      type: string;
+      parentId?: string;
+      targetId?: string;
+    };
+
+    const [draggedItem, draggedParent] = findItemAndParent(items, activeId);
     if (!draggedItem) return;
 
     let newItems = [...items];
 
-    // Sprawdź czy upuszczamy na drop zonę dla dzieci
-    const isChildDropZone = (over.data.current as any)?.type === "drop-zone";
-
-    // Jeśli upuszczamy na drop zonę dla dzieci
-    if (isChildDropZone) {
-      const targetId = over.id as string;
-      // Nie pozwalamy na przeniesienie rodzica do jego dziecka
-      if (isMovingToChild(draggedItem, targetId)) {
-        return;
-      }
-
-      // Usuń element z poprzedniej lokalizacji
-      newItems = removeFromParent(newItems, draggedItem.id);
-      // Dodaj jako dziecko
-      newItems = addAsChild(newItems, targetId, draggedItem);
-      reorderItems(newItems);
-      return;
-    }
-
-    // Jeśli upuszczamy na root drop zone
-    if (over.id === "root-drop-zone" || over.id === "root-end") {
-      if (draggedParent) {
+    switch (overData.type) {
+      case "nest":
+        if (isMovingToChild(draggedItem, overData.parentId!)) return;
         newItems = removeFromParent(newItems, draggedItem.id);
-        newItems.push(draggedItem);
+        newItems = addAsChild(newItems, overData.parentId!, draggedItem);
+        break;
+
+      case "before":
+      case "after": {
+        const [targetIndex, targetArray] = findItemIndex(
+          newItems,
+          overData.targetId!
+        );
+        if (targetArray) {
+          const [currentIndex, currentArray] = findItemIndex(
+            newItems,
+            draggedItem.id
+          );
+          if (currentArray === targetArray) {
+            // Przesuwamy w ramach tego samego poziomu
+            const newIndex =
+              overData.type === "after" ? targetIndex + 1 : targetIndex;
+            const oldIndex = currentIndex;
+            targetArray.splice(newIndex, 0, ...targetArray.splice(oldIndex, 1));
+          } else {
+            // Przenosimy między poziomami
+            newItems = removeFromParent(newItems, draggedItem.id);
+            const [newTargetIndex, newTargetArray] = findItemIndex(
+              newItems,
+              overData.targetId!
+            );
+            if (newTargetArray) {
+              newTargetArray.splice(
+                overData.type === "after" ? newTargetIndex + 1 : newTargetIndex,
+                0,
+                draggedItem
+              );
+            }
+          }
+        }
+        break;
       }
-      reorderItems(newItems);
-      return;
+
+      case "root":
+      case "root-end":
+        newItems = removeFromParent(newItems, draggedItem.id);
+        if (overData.type === "root-end") {
+          newItems.push(draggedItem);
+        } else {
+          newItems.unshift(draggedItem);
+        }
+        break;
     }
 
-    // Zwykłe przesuwanie - zmiana kolejności
-    const oldIndex = items.findIndex((item) => item.id === active.id);
-    const newIndex = items.findIndex((item) => item.id === over.id);
-
-    if (oldIndex !== -1 && newIndex !== -1) {
-      newItems = [...items];
-      const [removed] = newItems.splice(oldIndex, 1);
-      newItems.splice(newIndex, 0, removed);
-      reorderItems(newItems);
-    }
+    reorderItems(newItems);
   };
 
   const handleSubmit = (data: NavigationFormData) => {
@@ -286,7 +351,9 @@ export default function NavigationManager() {
       ) : (
         <>
           <DndContext
+            sensors={sensors}
             collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
             <SortableContext
@@ -295,15 +362,19 @@ export default function NavigationManager() {
             >
               <div className="space-y-2">
                 <RootDropZone />
-                {items.map((item, index) => (
-                  <div key={item.id}>
-                    <NavigationItem
-                      item={item}
-                      onEdit={setEditingItemId}
-                      onDelete={removeItem}
-                      onAddChild={setAddingChildToId}
-                    />
-                  </div>
+                {items.map((item) => (
+                  <NavigationItem
+                    key={item.id}
+                    item={item}
+                    onEdit={setEditingItemId}
+                    onDelete={removeItem}
+                    onAddChild={setAddingChildToId}
+                    isDragging={isDraggingAny}
+                    depth={0}
+                    isEditing={editingItemId === item.id}
+                    onSubmit={handleSubmit}
+                    onCancelEdit={() => setEditingItemId(null)}
+                  />
                 ))}
                 <EndDropZone />
               </div>
@@ -322,19 +393,10 @@ export default function NavigationManager() {
         </>
       )}
 
-      {(isAddingItem || editingItemId || addingChildToId) && (
+      {isAddingItem && (
         <NavigationForm
           onSubmit={handleSubmit}
-          onCancel={() => {
-            setIsAddingItem(false);
-            setEditingItemId(null);
-            setAddingChildToId(null);
-          }}
-          initialData={
-            editingItemId
-              ? items.find((item) => item.id === editingItemId)
-              : undefined
-          }
+          onCancel={() => setIsAddingItem(false)}
         />
       )}
     </div>
