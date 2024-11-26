@@ -23,6 +23,9 @@ import {
 } from "@/types/navigation";
 import { Plus } from "lucide-react";
 
+type PathSegment = number;
+type Path = PathSegment[];
+
 export default function NavigationManager() {
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -49,16 +52,12 @@ export default function NavigationManager() {
     const findPath = (
       items: NavigationItemType[],
       id: string,
-      path: number[] = []
-    ): number[] | null => {
+      path: Path = []
+    ): Path | null => {
       for (let i = 0; i < items.length; i++) {
         if (items[i].id === id) return [...path, i];
         if (items[i].children) {
-          const childPath = findPath(items[i].children!, id, [
-            ...path,
-            i,
-            "children",
-          ]);
+          const childPath = findPath(items[i].children!, id, [...path, i]);
           if (childPath) return childPath;
         }
       }

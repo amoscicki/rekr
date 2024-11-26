@@ -53,7 +53,12 @@ export function NavigationItem({
       )}
     >
       <div className="flex items-center gap-2 rounded-lg border bg-card p-2">
-        <button {...listeners} {...attributes} className="cursor-grab p-2">
+        <button
+          {...listeners}
+          {...attributes}
+          className="cursor-grab p-2"
+          aria-label="move item"
+        >
           <Move className="h-5 w-5 text-muted-foreground" />
         </button>
 

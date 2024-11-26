@@ -8,8 +8,6 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./test/setup.ts"],
-  },
-  resolve: {
     alias: {
       "@": resolve(__dirname, "./"),
     },
