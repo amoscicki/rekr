@@ -1,78 +1,78 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { NavigationItem } from '@/types/navigation'
+import { useState } from "react";
+import { NavigationItem, EXAMPLE_MENU } from "@/types/navigation";
 
 export function useNavigation() {
-  const [items, setItems] = useState<NavigationItem[]>([])
+  const [items, setItems] = useState<NavigationItem[]>(EXAMPLE_MENU);
 
-  const addItem = (item: NavigationItem, parentId?: string) => {
+  const addItem = (newItem: NavigationItem, parentId?: string) => {
     if (!parentId) {
-      setItems([...items, item])
-      return
+      setItems([...items, newItem]);
+      return;
     }
 
-    const updateItems = (items: NavigationItem[]): NavigationItem[] => {
-      return items.map((current) => {
-        if (current.id === parentId) {
+    const updateChildren = (items: NavigationItem[]): NavigationItem[] => {
+      return items.map((item) => {
+        if (item.id === parentId) {
           return {
-            ...current,
-            children: [...(current.children || []), item],
-          }
+            ...item,
+            children: [...(item.children || []), newItem],
+          };
         }
-        if (current.children) {
+        if (item.children) {
           return {
-            ...current,
-            children: updateItems(current.children),
-          }
+            ...item,
+            children: updateChildren(item.children),
+          };
         }
-        return current
-      })
-    }
+        return item;
+      });
+    };
 
-    setItems(updateItems(items))
-  }
+    setItems(updateChildren(items));
+  };
 
-  const updateItem = (itemId: string, updates: Partial<NavigationItem>) => {
+  const updateItem = (id: string, data: Partial<NavigationItem>) => {
     const updateItems = (items: NavigationItem[]): NavigationItem[] => {
       return items.map((item) => {
-        if (item.id === itemId) {
-          return { ...item, ...updates }
+        if (item.id === id) {
+          return { ...item, ...data };
         }
         if (item.children) {
           return {
             ...item,
             children: updateItems(item.children),
-          }
+          };
         }
-        return item
-      })
-    }
+        return item;
+      });
+    };
 
-    setItems(updateItems(items))
-  }
+    setItems(updateItems(items));
+  };
 
-  const removeItem = (itemId: string) => {
+  const removeItem = (id: string) => {
     const removeFromItems = (items: NavigationItem[]): NavigationItem[] => {
       return items
-        .filter((item) => item.id !== itemId)
+        .filter((item) => item.id !== id)
         .map((item) => {
           if (item.children) {
             return {
               ...item,
               children: removeFromItems(item.children),
-            }
+            };
           }
-          return item
-        })
-    }
+          return item;
+        });
+    };
 
-    setItems(removeFromItems(items))
-  }
+    setItems(removeFromItems(items));
+  };
 
-  const reorderItems = (items: NavigationItem[]) => {
-    setItems(items)
-  }
+  const reorderItems = (newItems: NavigationItem[]) => {
+    setItems(newItems);
+  };
 
   return {
     items,
@@ -80,6 +80,5 @@ export function useNavigation() {
     updateItem,
     removeItem,
     reorderItems,
-  }
+  };
 }
-

@@ -1,33 +1,44 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import * as z from 'zod'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { NavigationFormData } from '@/types/navigation'
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { NavigationFormData } from "@/types/navigation";
 
 const formSchema = z.object({
-  label: z.string().min(1, 'Nazwa jest wymagana'),
-  url: z.string().optional(),
-})
+  label: z.string().min(1, "Nazwa jest wymagana"),
+  url: z.string().url().optional().or(z.literal("")),
+});
 
 interface NavigationFormProps {
-  onSubmit: (data: NavigationFormData) => void
-  onCancel: () => void
-  initialData?: NavigationFormData
+  onSubmit: (data: NavigationFormData) => void;
+  onCancel: () => void;
+  initialData?: NavigationFormData;
 }
 
-export function NavigationForm({ onSubmit, onCancel, initialData }: NavigationFormProps) {
+export function NavigationForm({
+  onSubmit,
+  onCancel,
+  initialData,
+}: NavigationFormProps) {
   const form = useForm<NavigationFormData>({
     resolver: zodResolver(formSchema),
     defaultValues: initialData || {
-      label: '',
-      url: '',
+      label: "",
+      url: "",
     },
-  })
+  });
 
   return (
     <Form {...form}>
@@ -66,6 +77,5 @@ export function NavigationForm({ onSubmit, onCancel, initialData }: NavigationFo
         </div>
       </form>
     </Form>
-  )
+  );
 }
-
