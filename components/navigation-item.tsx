@@ -29,8 +29,14 @@ export function NavigationItem({
     transform,
     transition,
     isDragging,
+    isOver,
   } = useSortable({
     id: item.id,
+    data: {
+      type: "item",
+      item,
+      isChild,
+    },
   });
 
   const style = {
@@ -42,7 +48,14 @@ export function NavigationItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={cn("space-y-2", isChild && "ml-16")}
+      className={cn(
+        "space-y-2",
+        isChild && "ml-16",
+        isDragging && "opacity-50",
+        isOver &&
+          "relative after:absolute after:inset-0 after:border-2 after:border-dashed after:border-primary/50 after:rounded-lg"
+      )}
+      data-type="drop-zone"
     >
       <div className="flex items-center gap-2 rounded-lg border bg-card p-2">
         <button
