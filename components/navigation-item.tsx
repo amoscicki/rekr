@@ -49,11 +49,14 @@ export function NavigationItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "space-y-2",
-        isChild && "ml-16",
+        "relative",
         isDragging && "opacity-50",
-        isOver &&
-          "relative after:absolute after:inset-0 after:border-2 after:border-dashed after:border-primary/50 after:rounded-lg"
+        isChild && "ml-16",
+        isOver && [
+          "after:absolute after:left-16 after:-bottom-8 after:h-8 after:w-[calc(100%-4rem)]",
+          "after:border-2 after:border-dashed after:border-primary/50 after:rounded-lg",
+          "after:bg-primary/5",
+        ]
       )}
       data-type="drop-zone"
     >

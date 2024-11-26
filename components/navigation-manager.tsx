@@ -196,76 +196,45 @@ export default function NavigationManager() {
 
     let newItems = [...items];
 
-    // Jeśli upuszczamy na root drop zone lub końcową drop zone
+    // Sprawdź czy upuszczamy na drop zonę dla dzieci
+    const isChildDropZone = (over.data.current as any)?.type === "drop-zone";
+
+    // Jeśli upuszczamy na drop zonę dla dzieci
+    if (isChildDropZone) {
+      const targetId = over.id as string;
+      // Nie pozwalamy na przeniesienie rodzica do jego dziecka
+      if (isMovingToChild(draggedItem, targetId)) {
+        return;
+      }
+
+      // Usuń element z poprzedniej lokalizacji
+      newItems = removeFromParent(newItems, draggedItem.id);
+      // Dodaj jako dziecko
+      newItems = addAsChild(newItems, targetId, draggedItem);
+      reorderItems(newItems);
+      return;
+    }
+
+    // Jeśli upuszczamy na root drop zone
     if (over.id === "root-drop-zone" || over.id === "root-end") {
-      // Usuń element z poprzedniej lokalizacji tylko jeśli nie jest już na root level
       if (draggedParent) {
         newItems = removeFromParent(newItems, draggedItem.id);
-        // Dodaj na koniec głównej listy
         newItems.push(draggedItem);
       }
       reorderItems(newItems);
       return;
     }
 
-    // Jeśli przeciągamy na element
-    const [targetItem, targetParent] = findItemAndParent(
-      items,
-      over.id as string
-    );
-    if (!targetItem) return;
+    // Zwykłe przesuwanie - zmiana kolejności
+    const oldIndex = items.findIndex((item) => item.id === active.id);
+    const newIndex = items.findIndex((item) => item.id === over.id);
 
-    // Nie pozwalamy na przeniesienie rodzica do jego dziecka
-    if (isMovingToChild(draggedItem, over.id as string)) {
-      return;
+    if (oldIndex !== -1 && newIndex !== -1) {
+      newItems = [...items];
+      const [removed] = newItems.splice(oldIndex, 1);
+      newItems.splice(newIndex, 0, removed);
+      reorderItems(newItems);
     }
-
-    // Nie usuwamy elementu, jeśli jest już w docelowym miejscu
-    const isSamePosition =
-      (draggedParent === targetParent && draggedItem.id === targetItem.id) ||
-      (draggedParent === null && targetParent === null);
-
-    if (!isSamePosition) {
-      // Usuń element z poprzedniej lokalizacji
-      newItems = removeFromParent(newItems, draggedItem.id);
-
-      // Sprawdź pozycję kursora względem elementu docelowego
-      const targetRect = (over.data.current as any)?.rect;
-      const cursorY = (event as any).activatorEvent?.clientY;
-
-      if (!targetRect || typeof cursorY !== "number") {
-        // Fallback: dodaj jako dziecko
-        newItems = addAsChild(newItems, targetItem.id, draggedItem);
-      } else {
-        const threshold = targetRect.top + targetRect.height * 0.5;
-
-        if (cursorY < threshold) {
-          // Dodaj przed elementem
-          if (targetParent) {
-            const parentChildren = targetParent.children || [];
-            const targetIndex = parentChildren.findIndex(
-              (child) => child.id === targetItem.id
-            );
-            newItems = addToParentAtIndex(
-              newItems,
-              targetParent.id,
-              draggedItem,
-              targetIndex
-            );
-          } else {
-            const targetIndex = newItems.findIndex(
-              (item) => item.id === targetItem.id
-            );
-            newItems.splice(targetIndex, 0, draggedItem);
-          }
-        } else {
-          // Dodaj jako dziecko
-          newItems = addAsChild(newItems, targetItem.id, draggedItem);
-        }
-      }
-    }
-
-    reorderItems(newItems);
   };
 
   const handleSubmit = (data: NavigationFormData) => {
