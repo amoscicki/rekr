@@ -2,9 +2,9 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Move } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NavigationItem as NavigationItemType } from "@/types/navigation";
-import { Move } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavigationItemProps {
@@ -31,10 +31,6 @@ export function NavigationItem({
     isDragging,
   } = useSortable({
     id: item.id,
-    data: {
-      type: "item",
-      item,
-    },
   });
 
   const style = {
@@ -46,11 +42,7 @@ export function NavigationItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={cn(
-        "space-y-2",
-        isDragging && "opacity-50",
-        isChild && "ml-16"
-      )}
+      className={cn("space-y-2", isChild && "ml-16")}
     >
       <div className="flex items-center gap-2 rounded-lg border bg-card p-2">
         <button

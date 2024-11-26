@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   DndContext,
   DragEndEvent,
   closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
+  DragOverlay,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -21,10 +20,155 @@ import {
   NavigationFormData,
   NavigationItem as NavigationItemType,
 } from "@/types/navigation";
-import { Plus } from "lucide-react";
 
-type PathSegment = number;
-type Path = PathSegment[];
+const findItemAndParent = (
+  items: NavigationItemType[],
+  id: string,
+  parent: NavigationItemType | null = null
+): [NavigationItemType | null, NavigationItemType | null] => {
+  for (const item of items) {
+    if (item.id === id) {
+      return [item, parent];
+    }
+    if (item.children) {
+      const [found, foundParent] = findItemAndParent(item.children, id, item);
+      if (found) {
+        return [found, foundParent];
+      }
+    }
+  }
+  return [null, null];
+};
+
+function RootDropZone() {
+  const { isOver, setNodeRef } = useDroppable({
+    id: "root-drop-zone",
+    data: {
+      type: "root",
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="h-2 rounded-lg opacity-0 hover:opacity-100 transition-opacity"
+      data-drop-zone="root"
+      style={{
+        background: isOver ? "rgba(127, 86, 217, 0.1)" : "transparent",
+        border: isOver ? "2px dashed var(--primary)" : "none",
+      }}
+    />
+  );
+}
+
+function EndDropZone() {
+  const { isOver, setNodeRef } = useDroppable({
+    id: "root-end",
+    data: {
+      type: "root-end",
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="h-8 border-2 border-dashed border-primary/20 rounded-lg opacity-0 hover:opacity-100 transition-opacity mt-2"
+      data-drop-zone="root-end"
+      style={{
+        background: isOver ? "rgba(127, 86, 217, 0.1)" : "transparent",
+      }}
+    />
+  );
+}
+
+// Funkcje pomocnicze
+const isMovingToChild = (
+  parent: NavigationItemType,
+  targetId: string
+): boolean => {
+  if (!parent.children) return false;
+  return parent.children.some(
+    (child) =>
+      child.id === targetId ||
+      (child.children && isMovingToChild(child, targetId))
+  );
+};
+
+const removeFromParent = (
+  items: NavigationItemType[],
+  id: string
+): NavigationItemType[] => {
+  return items.filter((item) => {
+    if (item.children) {
+      item.children = removeFromParent(item.children, id);
+    }
+    return item.id !== id;
+  });
+};
+
+const addAsChild = (
+  items: NavigationItemType[],
+  parentId: string,
+  newItem: NavigationItemType
+): NavigationItemType[] => {
+  return items.map((item) => {
+    if (item.id === parentId) {
+      return {
+        ...item,
+        children: [...(item.children || []), newItem],
+      };
+    }
+    if (item.children) {
+      return {
+        ...item,
+        children: addAsChild(item.children, parentId, newItem),
+      };
+    }
+    return item;
+  });
+};
+
+const addBefore = (
+  items: NavigationItemType[],
+  targetId: string,
+  newItem: NavigationItemType
+): NavigationItemType[] => {
+  const result: NavigationItemType[] = [];
+  for (const item of items) {
+    if (item.id === targetId) {
+      result.push(newItem);
+    }
+    result.push({
+      ...item,
+      children: item.children
+        ? addBefore(item.children, targetId, newItem)
+        : undefined,
+    });
+  }
+  return result;
+};
+
+const addToParentAtIndex = (
+  items: NavigationItemType[],
+  parentId: string,
+  newItem: NavigationItemType,
+  index: number
+): NavigationItemType[] => {
+  return items.map((item) => {
+    if (item.id === parentId) {
+      const newChildren = [...(item.children || [])];
+      newChildren.splice(index, 0, newItem);
+      return { ...item, children: newChildren };
+    }
+    if (item.children) {
+      return {
+        ...item,
+        children: addToParentAtIndex(item.children, parentId, newItem, index),
+      };
+    }
+    return item;
+  });
+};
 
 export default function NavigationManager() {
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -32,104 +176,94 @@ export default function NavigationManager() {
   const [addingChildToId, setAddingChildToId] = useState<string | null>(null);
   const { items, addItem, updateItem, removeItem, reorderItems } =
     useNavigation();
+  const [mounted, setMounted] = useState(false);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  );
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    if (!over) return;
 
-    if (!over || active.id === over.id) return;
+    const [draggedItem, draggedParent] = findItemAndParent(
+      items,
+      active.id as string
+    );
+    if (!draggedItem) return;
 
-    const activeId = String(active.id);
-    const overId = String(over.id);
+    let newItems = [...items];
 
-    const findPath = (
-      items: NavigationItemType[],
-      id: string,
-      path: Path = []
-    ): Path | null => {
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].id === id) return [...path, i];
-        if (items[i].children) {
-          const childPath = findPath(items[i].children!, id, [...path, i]);
-          if (childPath) return childPath;
-        }
+    // Jeśli upuszczamy na root drop zone lub końcową drop zone
+    if (over.id === "root-drop-zone" || over.id === "root-end") {
+      // Usuń element z poprzedniej lokalizacji tylko jeśli nie jest już na root level
+      if (draggedParent) {
+        newItems = removeFromParent(newItems, draggedItem.id);
+        // Dodaj na koniec głównej listy
+        newItems.push(draggedItem);
       }
-      return null;
-    };
+      reorderItems(newItems);
+      return;
+    }
 
-    const activePath = findPath(items, activeId);
-    const overPath = findPath(items, overId);
+    // Jeśli przeciągamy na element
+    const [targetItem, targetParent] = findItemAndParent(
+      items,
+      over.id as string
+    );
+    if (!targetItem) return;
 
-    if (!activePath || !overPath) return;
+    // Nie pozwalamy na przeniesienie rodzica do jego dziecka
+    if (isMovingToChild(draggedItem, over.id as string)) {
+      return;
+    }
 
-    const newItems = JSON.parse(JSON.stringify(items));
+    // Nie usuwamy elementu, jeśli jest już w docelowym miejscu
+    const isSamePosition =
+      (draggedParent === targetParent && draggedItem.id === targetItem.id) ||
+      (draggedParent === null && targetParent === null);
 
-    const getItemByPath = (
-      items: NavigationItemType[],
-      path: number[]
-    ): NavigationItemType => {
-      let current = items;
-      let item = null;
+    if (!isSamePosition) {
+      // Usuń element z poprzedniej lokalizacji
+      newItems = removeFromParent(newItems, draggedItem.id);
 
-      for (let i = 0; i < path.length; i++) {
-        if (typeof path[i] === "string") {
-          current = current[path[i - 1]].children!;
+      // Sprawdź pozycję kursora względem elementu docelowego
+      const targetRect = (over.data.current as any)?.rect;
+      const cursorY = (event as any).activatorEvent?.clientY;
+
+      if (!targetRect || typeof cursorY !== "number") {
+        // Fallback: dodaj jako dziecko
+        newItems = addAsChild(newItems, targetItem.id, draggedItem);
+      } else {
+        const threshold = targetRect.top + targetRect.height * 0.5;
+
+        if (cursorY < threshold) {
+          // Dodaj przed elementem
+          if (targetParent) {
+            const parentChildren = targetParent.children || [];
+            const targetIndex = parentChildren.findIndex(
+              (child) => child.id === targetItem.id
+            );
+            newItems = addToParentAtIndex(
+              newItems,
+              targetParent.id,
+              draggedItem,
+              targetIndex
+            );
+          } else {
+            const targetIndex = newItems.findIndex(
+              (item) => item.id === targetItem.id
+            );
+            newItems.splice(targetIndex, 0, draggedItem);
+          }
         } else {
-          item = current[path[i]];
+          // Dodaj jako dziecko
+          newItems = addAsChild(newItems, targetItem.id, draggedItem);
         }
       }
-      return item!;
-    };
-
-    const removeItemByPath = (
-      items: NavigationItemType[],
-      path: number[]
-    ): NavigationItemType => {
-      let current = items;
-      let removed = null;
-
-      for (let i = 0; i < path.length - 1; i++) {
-        if (typeof path[i] === "string") {
-          current = current[path[i - 1]].children!;
-        } else {
-          current = current[path[i]].children || current;
-        }
-      }
-
-      const lastIndex = path[path.length - 1];
-      [removed] = current.splice(lastIndex, 1);
-      return removed;
-    };
-
-    const insertItemByPath = (
-      items: NavigationItemType[],
-      path: number[],
-      item: NavigationItemType
-    ) => {
-      let current = items;
-
-      for (let i = 0; i < path.length - 1; i++) {
-        if (typeof path[i] === "string") {
-          current = current[path[i - 1]].children!;
-        } else {
-          current = current[path[i]].children || current;
-        }
-      }
-
-      const lastIndex = path[path.length - 1];
-      current.splice(lastIndex, 0, item);
-    };
-
-    const activeItem = getItemByPath(newItems, activePath);
-    removeItemByPath(newItems, activePath);
-    insertItemByPath(newItems, overPath, activeItem);
+    }
 
     reorderItems(newItems);
   };
@@ -139,92 +273,100 @@ export default function NavigationManager() {
       updateItem(editingItemId, data);
       setEditingItemId(null);
     } else if (addingChildToId) {
-      addItem(
-        {
-          id: Math.random().toString(36).substr(2, 9),
-          ...data,
-        },
-        addingChildToId
-      );
+      // Dodajemy jako dziecko do konkretnego elementu
+      const parentItem = items.find((item) => item.id === addingChildToId);
+      if (parentItem) {
+        addItem(
+          {
+            ...data,
+            id: `nav_${Date.now()}_${Math.random()
+              .toString(36)
+              .substring(2, 9)}`,
+          },
+          addingChildToId
+        );
+      }
       setAddingChildToId(null);
     } else {
+      // Dodajemy jako główny element
       addItem({
-        id: Math.random().toString(36).substr(2, 9),
         ...data,
+        id: `nav_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       });
       setIsAddingItem(false);
     }
   };
 
-  if (items.length === 0) {
-    return (
-      <div className="space-y-4 p-4">
-        <div className="text-center">
+  return (
+    <div className="space-y-4 p-4">
+      {items.length === 0 ? (
+        // Stan pusty
+        <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold">Menu jest puste</h1>
           <p className="text-muted-foreground">
             W tym menu nie ma jeszcze żadnych linków.
           </p>
+          <Button
+            onClick={() => setIsAddingItem(true)}
+            className="w-full"
+            variant="default"
+          >
+            Dodaj pozycję menu
+          </Button>
         </div>
-        <Button
-          onClick={() => setIsAddingItem(true)}
-          className="w-full"
-          variant="default"
-        >
-          <Plus className="w-4 h-4" />
-          Dodaj pozycję menu
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4 p-4">
-      <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={items} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {items.map((item) => (
-              <div key={item.id} className="space-y-2">
-                <NavigationItem
-                  item={item}
-                  onEdit={setEditingItemId}
-                  onDelete={removeItem}
-                  onAddChild={setAddingChildToId}
-                />
-
-                {addingChildToId === item.id && (
-                  <div className="ml-16">
-                    <NavigationForm
-                      onSubmit={handleSubmit}
-                      onCancel={() => setAddingChildToId(null)}
-                    />
-                  </div>
-                )}
-
-                {item.children?.map((child) => (
-                  <div key={child.id} className="ml-16">
+      ) : (
+        <>
+          <DndContext
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={items}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-2">
+                <RootDropZone />
+                {items.map((item, index) => (
+                  <div key={item.id}>
                     <NavigationItem
-                      item={child}
+                      item={item}
                       onEdit={setEditingItemId}
                       onDelete={removeItem}
                       onAddChild={setAddingChildToId}
                     />
                   </div>
                 ))}
+                <EndDropZone />
               </div>
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+            </SortableContext>
+          </DndContext>
 
-      {!isAddingItem && !editingItemId && !addingChildToId && (
-        <Button
-          onClick={() => setIsAddingItem(true)}
-          className="w-full"
-          variant="outline"
-        >
-          <Plus className="w-4 h-4" />
-          Dodaj pozycję menu
-        </Button>
+          {!isAddingItem && !editingItemId && !addingChildToId && (
+            <Button
+              onClick={() => setIsAddingItem(true)}
+              className="w-full"
+              variant="outline"
+            >
+              Dodaj pozycję menu
+            </Button>
+          )}
+        </>
+      )}
+
+      {(isAddingItem || editingItemId || addingChildToId) && (
+        <NavigationForm
+          onSubmit={handleSubmit}
+          onCancel={() => {
+            setIsAddingItem(false);
+            setEditingItemId(null);
+            setAddingChildToId(null);
+          }}
+          initialData={
+            editingItemId
+              ? items.find((item) => item.id === editingItemId)
+              : undefined
+          }
+        />
       )}
     </div>
   );

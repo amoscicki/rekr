@@ -1,43 +1,82 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NavigationItem, EXAMPLE_MENU } from "@/types/navigation";
 
-export function useNavigation() {
-  const [items, setItems] = useState<NavigationItem[]>(EXAMPLE_MENU);
+const STORAGE_KEY = "navigation_items";
 
-  const addItem = (newItem: NavigationItem, parentId?: string) => {
+// Funkcja do rekurencyjnego generowania nowych ID
+const regenerateIds = (items: NavigationItem[]): NavigationItem[] => {
+  return items.map((item) => {
+    const newId = `nav_${Date.now()}_${Math.random()
+      .toString(36)
+      .substring(2, 9)}`;
+    return {
+      ...item,
+      id: newId,
+      children: item.children ? regenerateIds(item.children) : undefined,
+    };
+  });
+};
+
+export function useNavigation() {
+  const [items, setItems] = useState<NavigationItem[]>(() => {
+    if (typeof window === "undefined") return [];
+
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsedItems = JSON.parse(saved);
+        // Regeneruj ID przy wczytywaniu z localStorage
+        return regenerateIds(parsedItems);
+      }
+      // Jeśli nie ma zapisanych danych, użyj EXAMPLE_MENU z nowymi ID
+      return regenerateIds(EXAMPLE_MENU);
+    } catch {
+      return regenerateIds(EXAMPLE_MENU);
+    }
+  });
+
+  // Zapisz do localStorage przy każdej zmianie
+  useEffect(() => {
+    if (items.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    }
+  }, [items]);
+
+  const addItem = (item: NavigationItem, parentId?: string) => {
     if (!parentId) {
-      setItems([...items, newItem]);
+      setItems((prev) => [...prev, item]);
       return;
     }
 
-    const updateChildren = (items: NavigationItem[]): NavigationItem[] => {
-      return items.map((item) => {
-        if (item.id === parentId) {
-          return {
-            ...item,
-            children: [...(item.children || []), newItem],
-          };
-        }
-        if (item.children) {
-          return {
-            ...item,
-            children: updateChildren(item.children),
-          };
-        }
-        return item;
-      });
-    };
-
-    setItems(updateChildren(items));
+    setItems((prev) => {
+      const updateChildren = (items: NavigationItem[]): NavigationItem[] => {
+        return items.map((currentItem) => {
+          if (currentItem.id === parentId) {
+            return {
+              ...currentItem,
+              children: [...(currentItem.children || []), item],
+            };
+          }
+          if (currentItem.children) {
+            return {
+              ...currentItem,
+              children: updateChildren(currentItem.children),
+            };
+          }
+          return currentItem;
+        });
+      };
+      return updateChildren(prev);
+    });
   };
 
-  const updateItem = (id: string, data: Partial<NavigationItem>) => {
+  const updateItem = (itemId: string, updates: Partial<NavigationItem>) => {
     const updateItems = (items: NavigationItem[]): NavigationItem[] => {
       return items.map((item) => {
-        if (item.id === id) {
-          return { ...item, ...data };
+        if (item.id === itemId) {
+          return { ...item, ...updates };
         }
         if (item.children) {
           return {
@@ -52,10 +91,10 @@ export function useNavigation() {
     setItems(updateItems(items));
   };
 
-  const removeItem = (id: string) => {
+  const removeItem = (itemId: string) => {
     const removeFromItems = (items: NavigationItem[]): NavigationItem[] => {
       return items
-        .filter((item) => item.id !== id)
+        .filter((item) => item.id !== itemId)
         .map((item) => {
           if (item.children) {
             return {
@@ -70,8 +109,8 @@ export function useNavigation() {
     setItems(removeFromItems(items));
   };
 
-  const reorderItems = (newItems: NavigationItem[]) => {
-    setItems(newItems);
+  const reorderItems = (items: NavigationItem[]) => {
+    setItems(items);
   };
 
   return {
